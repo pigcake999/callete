@@ -6,10 +6,14 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title></title>
     <style id="mainStyles"></style>
+    <script>let historyType = 'api';</script>
+    <!--[if IE 8]><script>historyType = 'hash';</script><![endif]-->
 </head>
 <body>
     <div id="main-content"></div>
 
-    <script src="main.js"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=Array.prototype.keys%2CArray.prototype.forEach%2CElement.prototype.append%2CDocumentFragment.prototype.append%2CDocumentFragment.prototype.prepend%2CElement.prototype.classList%2CDate.now"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload@12.0.0/dist/lazyload.min.js"></script>
+    <script src="/assets/main.js"></script>
 </body>
 </html>

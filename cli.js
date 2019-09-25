@@ -8,7 +8,10 @@ const figlet = require('figlet');
 const mkdirp = require('mkdirp');
 const fs = require('fs');
 const path = require('path');
-const cheerio = require('cheerio');
+const express = require('express');
+const getStylesData = require('style-data');
+const showdown = require('showdown')
+const converter = new showdown.Converter()
 
 clear();
 console.log(
@@ -21,20 +24,57 @@ program.version(package.version, '-v, --version', 'Output the current version')
 .description("A CLI for managing Callete projects.")
 // .option('-p, --peppers', 'Add peppers')
 
-function buildComponent(component) {
-    console.log("Component:", component)
-    const $ = cheerio.load(component);
-    const style = $('style').text();
-    const html = component.replace('/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi', '');
-
-    return {html,css:style};
+function parseHrtimeToSeconds(hrtime) {
+    var seconds = (hrtime[0] + (hrtime[1] / 1e9)).toFixed(3);
+    return seconds;
 }
 
-function build(dir) {
+async function buildComponent(component, componentsDir) {
+    var options = {
+        url: './',
+        applyStyleTags: true,
+        removeStyleTags: true,
+        applyLinkTags: false,
+        removeLinkTags: false,
+        preserveMediaQueries: false
+    };
+    let comp = {};
+    getStylesData(component, options, function (err, results) {
+        comp.html = results.html
+        comp.css = results.css
+    });
+    return comp;
+}
+
+async function build(dir, production=false) {
+    let newdir = dir;
+    if (production == false) {
+        newdir = path.join(__dirname, 'tmp')
+    }
     let overallRoutes = {};
+    let items = fs.readdirSync(path.join(dir, `components`));
+    let allComponents = {}
+    for (var i=0; i<items.length; i++) {
+        let nc = await buildComponent(fs.readFileSync(path.join(dir, `components/${items[i]}`), 'utf8'), path.join(dir, `components`));
+        
+        allComponents[items[i].split('.ette')[0]]=nc;
+    }
+    const calleteConfig = require(path.join(process.cwd(), 'callete.config.json'));
+    let allMarkdown = {}
+    if (calleteConfig.markdown){
+        if(fs.existsSync(path.join(process.cwd(), calleteConfig.markdown))) {
+            let items = fs.readdirSync(path.join(process.cwd(), calleteConfig.markdown));
+            
+            for (var i=0; i<items.length; i++) {
+                let nm = converter.makeHtml(fs.readFileSync(path.join(process.cwd(), calleteConfig.markdown, items[i]), 'utf8'))
+                
+                allMarkdown[items[i].split('.md')[0]]=nm;
+            }
+        }
+    }
     let routes = JSON.parse(fs.readFileSync(path.join(dir, '/routes.json'), 'utf8'));
-    for (i of routes) {
-        let component = buildComponent(fs.readFileSync(path.join(dir, `components/${i.component}`), 'utf8'));
+    for (let i of routes) {
+        let component = await buildComponent(fs.readFileSync(path.join(dir, `components/${i.component}`), 'utf8'), path.join(dir, `components`));
         overallRoutes[i.url] = {
 
             html: component.html,
@@ -42,14 +82,18 @@ function build(dir) {
 
         }
     }
-    mkdirp(path.join(dir,'dist'));
+    mkdirp(path.join(newdir,'dist'));
     let jsTemplate = fs.readFileSync(path.join(__dirname, '/static/main.js'), 'utf8');
     jsTemplate = jsTemplate.replace(':routes:', JSON.stringify(overallRoutes));
+    jsTemplate = jsTemplate.replace(':components:', JSON.stringify(allComponents));
     jsTemplate = jsTemplate.replace(':404page:', '"<h1>404</h1>"');
+    jsTemplate = jsTemplate.replace(':markdown:', JSON.stringify(allMarkdown));
+    jsTemplate = jsTemplate.replace(':version_number:', package.version);
     const htmlTemplate = fs.readFileSync(path.join(__dirname, '/static/template.html'), 'utf8');
 
-    fs.writeFileSync(path.join(dir, '/dist/main.js'), jsTemplate, () => {});
-    fs.writeFileSync(path.join(dir, '/dist/index.html'), htmlTemplate, () => {});
+    mkdirp(path.join(newdir,'dist/assets'));
+    fs.writeFileSync(path.join(newdir, '/dist/assets/main.js'), jsTemplate, () => {});
+    fs.writeFileSync(path.join(newdir, '/dist/index.html'), htmlTemplate, () => {});
 }
 
 program.command('create <name> [starter]')
@@ -107,8 +151,9 @@ program.command('create <name> [starter]')
 
     mkdirp(`${path.join(process.cwd(),name)}/components`,);
 
-    fs.writeFileSync(`${name}/components/index.ette`, "test", () => {})
-    fs.writeFileSync(`${name}/components/about.ette`, "test", () => {})
+    fs.writeFileSync(`${name}/components/index.ette`, fs.readFileSync(path.join(__dirname, 'static/index.ette'), 'utf8'), () => {})
+    fs.writeFileSync(`${name}/components/about.ette`, fs.readFileSync(path.join(__dirname, 'static/about.ette'), 'utf8'), () => {})
+    fs.writeFileSync(`${name}/components/Navigation.ette`, fs.readFileSync(path.join(__dirname, 'static/Navigation.ette'), 'utf8'), () => {})
     
     console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("package.json"))
     console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("routes.json"))
@@ -120,10 +165,27 @@ program.command('create <name> [starter]')
 
 program.command('build')
 .option('-p, --production', 'Production Mode')
-.action(function () {
-    build(process.cwd())
+.action(async function (cmd) {
+    let startTime = process.hrtime();
+    await build(process.cwd(), cmd.production)
+    let elapsedSeconds = parseHrtimeToSeconds(process.hrtime(startTime));
     
-    console.log(chalk.cyan("STATUS"), chalk.green("PASS"))
+    if(!cmd.production) {
+        let app = express()
+
+        app.use("/assets", express.static(path.join(__dirname, 'tmp/dist/assets')))
+
+        app.get("*", (req,res) => {
+            res.sendFile(path.join(__dirname, 'tmp/dist/index.html'))
+        });
+
+        var host = '127.0.0.1', port = 3000;
+
+        app.listen(port, () => {});
+        console.log(chalk.bgGreen.black("DONE"), chalk.green('Compiled successfully in '+elapsedSeconds.toString()+' seconds.'), `\n\nApp running at:\n- Local:  `+chalk.cyan(`http://localhost:`+chalk.bold(port)+'/'), '\n\nNote that the development build is not optimized.\nTo create a production build, run '+chalk.cyan('callete build -p')+'.')
+    } else {
+        console.log(chalk.bgGreen.black("DONE"), chalk.green('Compiled successfully in '+elapsedSeconds.toString()+' seconds.'), `\n\nProduction build created in ${chalk.cyan('/dist')}.`)
+    }
 });
 
 program.parse(process.argv);
