@@ -1,5 +1,9 @@
 # Callete
 
+A framework built for beginners, and speed.
+
+**Discord**: [discord.gg/SMP5Sy](https://discord.gg/SMP5Sy)
+
 ## Installing
 
 Run this command:
@@ -27,6 +31,8 @@ Builds and runs a server.
 `callete build -p [-N]`
 
 Builds a production-ready site in a _dist_ folder in your project folder.
+
+**-N or --netlify**: Builds for netlify with files like *_redirects*
 
 ## Routing
 

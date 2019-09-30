@@ -23,28 +23,11 @@ const app = {
             this.loadPage(window['404']);
         }
 
-        var anchors = document.getElementsByTagName("a");
-
-        for (var i = 0; i < anchors.length; i++) {
-            if (this.handleRoute(anchors[i].href) != false) {
-                anchors[i].href = "javascript:app.handlePageChange('" + this.handleRoute(anchors[i].href) + "');";
-            }
-        }
-        
-        var images = document.getElementsByTagName("img");
-
-        for (var i = 0; i < images.length; i++) {
-            let img = images[i];
-
-            let data_src = img.src;
-            img.removeAttribute('src');
-            img.setAttribute('data-src', data_src);
-            img.classList.add('lazyLoadImage')
-        }
-
-        let keysUsed = []
+        let keysUsed = [];
 
         Object.keys(window.components).forEach(function(key) {
+
+            console.log(key)
 
             let els = document.getElementsByTagName(key)
             
@@ -55,6 +38,8 @@ const app = {
                     keysUsed.push(key);
                 }
             }
+
+            console.log(keysUsed)
 
             for (let j = 0; j < keysUsed.length; j++) {
                 const elem = keysUsed[j];
@@ -69,6 +54,25 @@ const app = {
                 const el = els[i];
                 el.innerHTML = window.markdown[el.getAttribute('file')];
             }
+        
+            let anchors = document.getElementsByTagName("a");
+
+        for (let i = 0; i < anchors.length; i++) {
+            if (app.handleRoute(anchors[i].href) != false) {
+                anchors[i].href = "javascript:app.handlePageChange('" + app.handleRoute(anchors[i].href) + "');";
+            }
+        }
+        
+        var images = document.getElementsByTagName("img");
+
+        for (var i = 0; i < images.length; i++) {
+            let img = images[i];
+
+            let data_src = img.src;
+            img.removeAttribute('src');
+            img.setAttribute('data-src', data_src);
+            img.classList.add('lazyLoadImage')
+        }
     },
 
     loadPage: function(pageContent) {
@@ -83,28 +87,32 @@ const app = {
 
     handleRoute: function(routeUrl) {
         routeUrl = routeUrl.replace(window.location.origin, '')
-        if (routeUrl.substr(0,1) != '/') {
-            routeUrl = '/' + routeUrl;
-        }
-        if (routeUrl.substr(0,8) == 'https://' || routeUrl.substr(0,7) == 'http://' || routeUrl.substr(0,2) == '//' || routeUrl.substr(0,1) == '#') {
-            routeUrl = false;
-        }
-        if (routeUrl[routeUrl.length-1] == '/') {
-            routeUrl = routeUrl.substr(0,routeUrl.length - 1);
+        if (routeUrl != '/') {
+            if (routeUrl.substr(0,1) != '/') {
+                routeUrl = '/' + routeUrl;
+            }
+            if (routeUrl.substr(0,8) == 'https://' || routeUrl.substr(0,7) == 'http://' || routeUrl.substr(0,2) == '//' || routeUrl.substr(0,1) == '#') {
+                routeUrl = false;
+            }
+            if (routeUrl[routeUrl.length-1] == '/') {
+                routeUrl = routeUrl.substr(0,routeUrl.length - 1);
+            }
         }
 
         return routeUrl;
     },
 
     handlePageChange: function(route) {
-        window.currentPath = route;
+        if (window.currentPath != route){
+            window.currentPath = route;
 
-        if(historyType == 'hash'){
-            window.location.hash = '/' + route;
-        } else {
-            window.history.pushState({}, route.substr(1,route.length), window.location.origin + route);
+            if(historyType == 'hash'){
+                window.location.hash = '/' + route;
+            } else {
+                window.history.pushState({}, route.substr(1,route.length), window.location.origin + route);
+            }
+            app.update()
         }
-        app.update()
     },
 
     hashRouter: function(evt) {

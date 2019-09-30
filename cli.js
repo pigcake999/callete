@@ -11,7 +11,9 @@ const path = require('path');
 const express = require('express');
 const getStylesData = require('style-data');
 const showdown = require('showdown')
-const converter = new showdown.Converter()
+const showdownHighlight = require("showdown-highlight")
+const converter = new showdown.Converter({extensions:[showdownHighlight]})
+const degit = require('degit');
 
 clear();
 console.log(
@@ -34,19 +36,22 @@ async function buildComponent(component, componentsDir) {
         url: './',
         applyStyleTags: true,
         removeStyleTags: true,
-        applyLinkTags: false,
+        applyLinkTags: true,
         removeLinkTags: false,
-        preserveMediaQueries: false
+        preserveMediaQueries: true
     };
     let comp = {};
     getStylesData(component, options, function (err, results) {
+        if(err){
+            throw err;
+        }
         comp.html = results.html
         comp.css = results.css
     });
     return comp;
 }
 
-async function build(dir, production=false) {
+async function build(dir, production=false, netlify=false) {
     let newdir = dir;
     if (production == false) {
         newdir = path.join(__dirname, 'tmp')
@@ -91,8 +96,14 @@ async function build(dir, production=false) {
     jsTemplate = jsTemplate.replace(':version_number:', package.version);
     const htmlTemplate = fs.readFileSync(path.join(__dirname, '/static/template.html'), 'utf8');
 
+    let redirectsFile = `/*    /index.html   200
+/assets/*    /assets/:splat   200`;
+
     mkdirp(path.join(newdir,'dist/assets'));
     fs.writeFileSync(path.join(newdir, '/dist/assets/main.js'), jsTemplate, () => {});
+    if(netlify){
+        fs.writeFileSync(path.join(newdir, '/dist/_redirects'), redirectsFile, () => {})
+    }
     fs.writeFileSync(path.join(newdir, '/dist/index.html'), htmlTemplate, () => {});
 }
 
@@ -100,7 +111,6 @@ program.command('create <name> [starter]')
 .option('-t, --typescript', 'Use Typescript')
 .action(function (name, starter) {
     let start = "";
-    let usingStarter = "Beginner";
     
     if (starter) {
         start = ` from the starter: ${starter}`;
@@ -112,62 +122,78 @@ program.command('create <name> [starter]')
 
     console.log(chalk.cyan(`Creating project '${name}'${start}`));
 
-    mkdirp(path.join(process.cwd(),name));
+    if (starter){
+        starter = starter.replace("https://github.com/", '')
 
-    let newpackage = {
+        const emitter = degit(starter, {
+            cache: false,
+            force: true,
+            verbose: true,
+        });
+        emitter.clone(path.join(process.cwd(),name)).then(() => {
+            console.log(chalk.bgGreen('CLONED'), chalk.green('Repository cloned to '+path.join(process.cwd(),name)));
+        });
+    } else {
+        mkdirp(path.join(process.cwd(),name));
 
-        name,
-        version: "1.0.0",
-        description: "A callete project",
-        author: "",
-        main: "index.js",
-        scripts: {
-            dev: "callete serve",
-            build: "callete build -p"
-        },
-        keywords: [],
-        license: "ISC"
+        const newname = name.toLowerCase()
+
+        let newpackage = {
+
+            newname,
+            version: "1.0.0",
+            description: "A callete project",
+            author: "",
+            main: "index.js",
+            scripts: {
+                dev: "callete build",
+                build: "callete build -p"
+            },
+            keywords: [],
+            license: "ISC"
+            
+        };
+
+        const routes = [{
+            url: '/',
+            component: 'index.ette'
+        }, {
+            url: '/about',
+            component: 'about.ette'
+        }];
+
+        const config = {
+
+            name,
+            description: 'A Callete App.',
+            version: '1.0.0'
+        };
+
+        fs.writeFileSync(`${name}/package.json`, JSON.stringify(newpackage, null, '\t'), () => {})
+        fs.writeFileSync(`${name}/routes.json`, JSON.stringify(routes, null, '\t'), () => {})
+        fs.writeFileSync(`${name}/callete.config.json`, JSON.stringify(config, null, '\t'), () => {})
+
+        mkdirp(`${path.join(process.cwd(),name)}/components`,);
+
+        fs.writeFileSync(`${name}/components/index.ette`, fs.readFileSync(path.join(__dirname, 'static/index.ette'), 'utf8'), () => {})
+        fs.writeFileSync(`${name}/components/about.ette`, fs.readFileSync(path.join(__dirname, 'static/about.ette'), 'utf8'), () => {})
+        fs.writeFileSync(`${name}/components/Navigation.ette`, fs.readFileSync(path.join(__dirname, 'static/Navigation.ette'), 'utf8'), () => {})
         
-    };
-
-    const routes = [{
-        url: '/',
-        component: 'index.ette'
-    }, {
-        url: '/about',
-        component: 'about.ette'
-    }];
-
-    const config = {
-
-        name,
-        description: 'A Callete App.',
-        version: '1.0.0'
-    };
-
-    fs.writeFileSync(`${name}/package.json`, JSON.stringify(newpackage, null, '\t'), () => {})
-    fs.writeFileSync(`${name}/routes.json`, JSON.stringify(routes, null, '\t'), () => {})
-    fs.writeFileSync(`${name}/callete.config.json`, JSON.stringify(config, null, '\t'), () => {})
-
-    mkdirp(`${path.join(process.cwd(),name)}/components`,);
-
-    fs.writeFileSync(`${name}/components/index.ette`, fs.readFileSync(path.join(__dirname, 'static/index.ette'), 'utf8'), () => {})
-    fs.writeFileSync(`${name}/components/about.ette`, fs.readFileSync(path.join(__dirname, 'static/about.ette'), 'utf8'), () => {})
-    fs.writeFileSync(`${name}/components/Navigation.ette`, fs.readFileSync(path.join(__dirname, 'static/Navigation.ette'), 'utf8'), () => {})
-    
-    console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("package.json"))
-    console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("routes.json"))
-    console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("callete.config.json"))
-    console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("components/"))
-    console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("components/index.ette"))
-    console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("components/about.ette"))
+        console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("package.json"))
+        console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("routes.json"))
+        console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("callete.config.json"))
+        console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("components/"))
+        console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("components/index.ette"))
+        console.log(chalk.black.bgGreen.bold("CREATED"), chalk.yellow("components/about.ette"))
+    }
 });
 
 program.command('build')
 .option('-p, --production', 'Production Mode')
+.option('-N, --netlify', 'Production Mode')
 .action(async function (cmd) {
     let startTime = process.hrtime();
-    await build(process.cwd(), cmd.production)
+    await build(process.cwd(), cmd.production, cmd.netlify)
     let elapsedSeconds = parseHrtimeToSeconds(process.hrtime(startTime));
     
     if(!cmd.production) {
